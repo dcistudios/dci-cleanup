@@ -1,89 +1,136 @@
 import os
+import sys
+import asyncio
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import discord
 
-load_dotenv()
-TOKEN = os.getenv("DISCORD_TOKEN")
-INACTIVE_DAYS = int(os.getenv("INACTIVE_DAYS", "30"))
+# ── Config ────────────────────────────────────────────────────────────────────
 
-class SelfBot(discord.Client):
-    async def on_ready(self):
-        print(f"\nLogged in as {self.user}\n")
-        await self.check_inactive_servers()
+load_dotenv()
+
+TOKEN = os.getenv(“DISCORD_TOKEN”)
+INACTIVE_DAYS = int(os.getenv(“INACTIVE_DAYS”, “30”))
+
+if not TOKEN:
+print(“Error: DISCORD_TOKEN is not set in your .env file.”)
+sys.exit(1)
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+DIVIDER = “─” * 44
+
+def prompt_yes_no(question: str) -> bool:
+“”“Prompt the user with a y/n question. Accepts y/n/yes/no.”””
+while True:
+answer = input(f”    {question} (y/n): “).strip().lower()
+if answer in (“y”, “yes”):
+return True
+if answer in (“n”, “no”):
+return False
+print(”    Please enter y or n.”)
+
+async def get_last_activity(
+guild: discord.Guild,
+user: discord.ClientUser,
+cutoff: datetime,
+) -> datetime | None:
+“”“Return the most recent message time by `user` in `guild` after `cutoff`, or None.”””
+for channel in guild.text_channels:
+try:
+async for message in channel.history(limit=50, after=cutoff):
+if message.author == user:
+return message.created_at
+except (discord.Forbidden, discord.HTTPException):
+continue
+return None
+
+async def set_status(client: discord.Client, text: str) -> None:
+“”“Silently update the client’s custom status.”””
+try:
+await client.change_presence(activity=discord.CustomActivity(name=text))
+except Exception:
+pass
+
+# ── Bot ───────────────────────────────────────────────────────────────────────
+
+class CleanupBot(discord.Client):
+
+```
+async def on_ready(self) -> None:
+    print(f"\nLogged in as {self.user}")
+    print(f"Scanning for servers inactive for >{INACTIVE_DAYS} days...\n")
+    try:
+        await self.run_cleanup()
+    finally:
         await self.close()
 
-    async def check_inactive_servers(self):
-        cutoff = datetime.now(timezone.utc) - timedelta(days=INACTIVE_DAYS)
-        inactive = []
-        guilds = list(self.guilds)
-        total = len(guilds)
+async def run_cleanup(self) -> None:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=INACTIVE_DAYS)
+    guilds = list(self.guilds)
+    total = len(guilds)
+    inactive: list[discord.Guild] = []
 
-        print(f"Scanning {total} servers for inactivity (>{INACTIVE_DAYS} days)...\n")
+    # ── Scan phase ────────────────────────────────────────────────────────
+    for i, guild in enumerate(guilds, 1):
+        print(f"[{i:>{len(str(total))}}/{total}] {guild.name}", end=" ", flush=True)
+        await set_status(self, f"Scanning {i}/{total}")
 
-        for i, guild in enumerate(guilds, 1):
-            print(f"[{i}/{total}] Scanning: {guild.name}", flush=True)
-            try:
-                await self.change_presence(
-                    activity=discord.CustomActivity(name=f"SCANNING {i}/{total}")
-                )
-            except Exception:
-                pass
+        last_active = await get_last_activity(guild, self.user, cutoff)
 
-            last_message_time = None
-            for channel in guild.text_channels:
-                try:
-                    async for message in channel.history(limit=50, after=cutoff):
-                        if message.author == self.user:
-                            last_message_time = message.created_at
-                            break
-                    if last_message_time:
-                        break
-                except (discord.Forbidden, discord.HTTPException):
-                    continue
+        if last_active:
+            print(f"→ active  ({last_active.strftime('%Y-%m-%d')})")
+        else:
+            print("→ INACTIVE")
+            inactive.append(guild)
 
-            if not last_message_time:
-                print(f"  -> INACTIVE")
-                inactive.append(guild)
-            else:
-                print(f"  -> Active (last message: {last_message_time.strftime('%Y-%m-%d')})")
+    await set_status(self, "scan complete")
 
+    # ── Summary ───────────────────────────────────────────────────────────
+    print(f"\n{DIVIDER}")
+    print(f"  Scan complete — {len(inactive)} inactive / {total} total")
+    print(DIVIDER)
+
+    if not inactive:
+        print("\n  Nothing to do. All servers are active!\n")
+        return
+
+    # ── Interactive leave phase ───────────────────────────────────────────
+    print("\n  Choose which inactive servers to leave:\n")
+
+    to_leave: list[discord.Guild] = []
+    for idx, guild in enumerate(inactive, 1):
+        members = f"{guild.member_count:,} members" if guild.member_count else "unknown size"
+        print(f"  [{idx}/{len(inactive)}] {guild.name}  ({members})")
+        if prompt_yes_no("Leave?"):
+            to_leave.append(guild)
+        print()
+
+    if not to_leave:
+        print("No servers selected. Nothing changed.")
+        return
+
+    # ── Leave phase ───────────────────────────────────────────────────────
+    print(f"{DIVIDER}")
+    print(f"  Leaving {len(to_leave)} server(s)...")
+    print(DIVIDER + "\n")
+
+    left, failed = 0, 0
+    for guild in to_leave:
         try:
-            await self.change_presence(activity=discord.CustomActivity(name="scan complete"))
-        except Exception:
-            pass
+            await guild.leave()
+            print(f"  ✓ Left:   {guild.name}")
+            left += 1
+            await asyncio.sleep(0.5)   # small delay to avoid rate limits
+        except discord.HTTPException as e:
+            print(f"  ✗ Failed: {guild.name}  ({e})")
+            failed += 1
 
-        print(f"\nScan complete. {len(inactive)} inactive server(s) found.\n")
+    print(f"\n  Done — left {left} server(s)" + (f", {failed} failed." if failed else "."))
+```
 
-        if not inactive:
-            print("Nothing to do!")
-            return
+# ── Entry point ───────────────────────────────────────────────────────────────
 
-        print("=" * 40)
-        print("INACTIVE SERVERS - Choose which to leave:")
-        print("=" * 40 + "\n")
-
-        to_leave = []
-        for idx, guild in enumerate(inactive, 1):
-            print(f"[{idx}/{len(inactive)}] {guild.name} ({guild.member_count} members)")
-            answer = input(f"    Would you like to leave? (y/n): ").strip().lower()
-            print()
-            if answer == "y":
-                to_leave.append(guild)
-
-        if not to_leave:
-            print("No servers selected to leave.")
-            return
-
-        print(f"\nLeaving {len(to_leave)} server(s)...\n")
-        for guild in to_leave:
-            try:
-                await guild.leave()
-                print(f"  Left: {guild.name}")
-            except discord.HTTPException as e:
-                print(f"  Failed to leave {guild.name}: {e}")
-
-        print("\nDone!")
-
-client = SelfBot()
+if **name** == “**main**”:
+client = CleanupBot()
 client.run(TOKEN)
