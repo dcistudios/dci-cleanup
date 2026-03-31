@@ -9,33 +9,33 @@ import discord
 
 load_dotenv()
 
-TOKEN = os.getenv(“DISCORD_TOKEN”)
-INACTIVE_DAYS = int(os.getenv(“INACTIVE_DAYS”, “30”))
+TOKEN = os.getenv("DISCORD_TOKEN")
+INACTIVE_DAYS = int(os.getenv("INACTIVE_DAYS", "30"))
 
 if not TOKEN:
-print(“Error: DISCORD_TOKEN is not set in your .env file.”)
+print("Error: DISCORD_TOKEN is not set in your .env file.")
 sys.exit(1)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-DIVIDER = “─” * 44
+DIVIDER = "─" * 44
 
 def prompt_yes_no(question: str) -> bool:
-“”“Prompt the user with a y/n question. Accepts y/n/yes/no.”””
+"""Prompt the user with a y/n question. Accepts y/n/yes/no."""
 while True:
-answer = input(f”    {question} (y/n): “).strip().lower()
-if answer in (“y”, “yes”):
+answer = input(f"    {question} (y/n): ").strip().lower()
+if answer in ("y", "yes"):
 return True
-if answer in (“n”, “no”):
+if answer in ("n", "no"):
 return False
-print(”    Please enter y or n.”)
+print("Please enter y or n.")
 
 async def get_last_activity(
 guild: discord.Guild,
 user: discord.ClientUser,
 cutoff: datetime,
 ) -> datetime | None:
-“”“Return the most recent message time by `user` in `guild` after `cutoff`, or None.”””
+"""Return the most recent message time by `user` in `guild` after `cutoff`, or None."""
 for channel in guild.text_channels:
 try:
 async for message in channel.history(limit=50, after=cutoff):
@@ -46,7 +46,7 @@ continue
 return None
 
 async def set_status(client: discord.Client, text: str) -> None:
-“”“Silently update the client’s custom status.”””
+"""Silently update the client’s custom status."""
 try:
 await client.change_presence(activity=discord.CustomActivity(name=text))
 except Exception:
