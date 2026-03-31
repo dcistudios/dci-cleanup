@@ -131,6 +131,6 @@ async def run_cleanup(self) -> None:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
-if **name** == “**main**”:
+if **name** == "**main**":
 client = CleanupBot()
 client.run(TOKEN)
