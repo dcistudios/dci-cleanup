@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import discord
 
-# ── Config ────────────────────────────────────────────────────────────────────
+#── Config ────────────────────────────────────────────────────────────────────
 
 load_dotenv()
 
@@ -13,8 +13,9 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 INACTIVE_DAYS = int(os.getenv("INACTIVE_DAYS", "30"))
 
 if not TOKEN:
-print("Error: DISCORD_TOKEN is not set in your .env file.")
-sys.exit(1)
+    print("Error: DISCORD_TOKEN is not set in your .env file.")
+    sys.exit(1)
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -132,6 +133,7 @@ async def run_cleanup(self) -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+
 
 
 client = CleanupBot()
