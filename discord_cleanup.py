@@ -131,5 +131,6 @@ class CleanupBot(discord.Client):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    client = CleanupBot()
+    intents = discord.Intents.default()
+    client = CleanupBot(intents=intents)
     client.run(TOKEN)
